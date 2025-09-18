@@ -1,0 +1,79 @@
+project:
+  seed: 2025
+  results_dir: results
+  experiments_dir: experiments
+  models_dir: models
+
+data:
+  raw_dir: data/raw
+  interim_dir: data/interim
+  processed_dir: data/processed
+  diagnostico_file: diagnostico.csv           # si usas versión ya resumida
+  diagnostico_wide_file: diagnostico_wide.csv # si partes de formato wide
+  calificaciones_file: calificaciones.csv
+  reinscripciones_file: reinscripciones.csv
+  dificultad_materias_file: dificultad_materias.csv  # opcional
+
+splits:
+  train_periods: ["A", "B"]
+  test_periods: ["C"]
+
+targets:
+  T1:
+    name: "riesgo_semestre"
+    definition: "Reprobar >=2 materias en el semestre siguiente"
+    positive_rule: "reprobadas_semestre_sig >= 2"
+  T2:
+    name: "desercion_1y"
+    definition: "No reinscripción en dos semestres siguientes"
+    positive_rule: "no_reinscribe_2sem == 1"
+  T3:
+    name: "bajo_gpa"
+    definition: "GPA < 70 al cierre del semestre siguiente"
+    positive_rule: "gpa_semestre_sig < 70"
+
+features:
+  include:
+    - diag_score
+    - diag_pct
+    - diag_bins
+    - creditos_t0
+    - rigor_t0
+    - turno
+    - carga_alta
+    - gap_diag_rigor
+    - pct_correcto           # del diagnóstico por ítems
+    - pct_Aritmetica
+    - pct_Algebra
+    - pct_Geometria
+    - pct_Trigonometria
+
+modeling:
+  imbalance_strategy: class_weight
+  cv_folds: 5
+  metrics: [roc_auc, average_precision, f1, recall]
+  top_k_recall: 0.20
+
+models:
+  logistic_l1:
+    type: logistic
+    penalty: l1
+    C: [0.1, 0.5, 1.0]
+    solver: liblinear
+    class_weight: balanced
+  random_forest:
+    type: rf
+    n_estimators: [300]
+    max_depth: [4, 6, 8]
+    min_samples_leaf: [1, 3, 5]
+    class_weight: balanced_subsample
+  xgboost:
+    type: xgb
+    n_estimators: 600
+    learning_rate: 0.03
+    max_depth: 4
+    subsample: 0.8
+    colsample_bytree: 0.8
+    reg_lambda: 1.0
+    reg_alpha: 0.0
+    eval_metric: aucpr
