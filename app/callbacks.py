@@ -810,3 +810,124 @@ def _render_correlaciones(metodo, usar_sel_flags, selected_idx):
         )
 
     return fig, tabla
+
+
+
+
+# ================== Parcats (Categorías paralelas) ==================
+
+def _sanitize_parcats_df(df: pd.DataFrame):
+    """
+    Prepara un DataFrame robusto para parcats.
+    - Garantiza columnas categóricas requeridas (si no existen, crea 'NA').
+    - Normaliza strings ('SI'/'NO', 'APROBADO'/'REPROBADO').
+    - Asegura una columna de color numérica ('Cal Final' si existe; de lo contrario, 0.0).
+    Retorna (dfp, cat_cols, color_col)
+    """
+    dfp = df.copy()
+
+    # Columnas objetivo (ajusta el orden si lo deseas)
+    cat_cols = [
+        "Aprobado Aritmetica",
+        "Aprobado Algebra",
+        "Aprobado Geometria",
+        "Aprobado General",
+        "Termino 2024-3",
+        "Termino 2025-1",
+    ]
+
+    # Asegura columnas categóricas
+    for c in cat_cols:
+        if c not in dfp.columns:
+            dfp[c] = "NA"
+        dfp[c] = dfp[c].astype(str).fillna("NA")
+
+    # Normalización básica SI/NO/APROBADO/REPROBADO
+    def _norm_bin(v: str) -> str:
+        s = str(v).strip().upper()
+        if s in {"SÍ", "SI", "TRUE", "1", "APROBADO"}:
+            return "APROBADO" if "APROB" in s else "SI"
+        if s in {"NO", "FALSE", "0", "REPROBADO"}:
+            return "REPROBADO" if "REPROB" in s else "NO"
+        if s in {"", "NAN", "NONE"}:
+            return "NA"
+        return s
+
+    for c in cat_cols:
+        cu = c.upper()
+        if "APROBADO" in cu:
+            # Mapea a APROBADO/REPROBADO
+            dfp[c] = dfp[c].apply(_norm_bin).replace({"SI": "APROBADO", "NO": "REPROBADO"})
+        elif "TERMINO" in cu or "TÉRMINO" in cu:
+            # Mapea a SI/NO
+            dfp[c] = dfp[c].apply(_norm_bin).replace({"APROBADO": "SI", "REPROBADO": "NO"})
+        else:
+            dfp[c] = dfp[c].astype(str).fillna("NA").str.upper()
+
+    # Columna de color
+    color_col = "Cal Final" if "Cal Final" in dfp.columns else None
+    if color_col is None:
+        dfp["_color_dummy"] = 0.0
+        color_col = "_color_dummy"
+    dfp[color_col] = pd.to_numeric(dfp[color_col], errors="coerce")
+    dfp[color_col] = dfp[color_col].fillna(dfp[color_col].median() if dfp[color_col].notna().any() else 0.0)
+
+    return dfp, cat_cols, color_col
+
+
+@callback(
+    Output("graf-categorias-paralelas", "figure"),
+    Input("agrupar-por-periodo", "value"),  # solo para refrescar suave (no afecta el contenido)
+)
+def _render_parcats(_refresh):
+    import plotly.express as px
+
+    if not CSV_PATH.exists():
+        fig_empty = px.scatter(title=f"No se encontró {CSV_PATH}")
+        fig_empty.update_layout(uirevision="const")
+        return fig_empty
+
+    df = pd.read_csv(CSV_PATH)
+    dfp, cat_cols, color_col = _sanitize_parcats_df(df)
+
+    # Órdenes consistentes
+    order_apr = ["REPROBADO", "APROBADO"]
+    order_ter = ["NO", "SI"]
+
+    # Etiquetas amigables
+    labels = {
+        "Aprobado Aritmetica": "Aritmética",
+        "Aprobado Algebra": "Álgebra",
+        "Aprobado Geometria": "Geometría",
+        "Aprobado General": "General",
+        "Termino 2024-3": "Término 2024-3",
+        "Termino 2025-1": "Término 2025-1",
+        "Cal Final": "Calificación Final",
+    }
+
+    fig = px.parallel_categories(
+        dfp,
+        dimensions=cat_cols,
+        color=color_col,
+        color_continuous_scale=px.colors.sequential.Inferno,
+        labels=labels,
+    )
+
+    # Forzar orden en dimensiones relevantes
+    # (px.parallel_categories no acepta categoryarray por kwargs directos,
+    #  pero respeta el orden alfabético/valor. Ya normalizamos a REPROBADO/APROBADO y NO/SI)
+    # Si lo quieres totalmente fijo, podríamos convertir a CategoricalDtype con order.
+    for c in cat_cols:
+        cu = c.upper()
+        if "APROBADO" in cu:
+            dfp[c] = pd.Categorical(dfp[c], categories=order_apr, ordered=True)
+        elif "TERMINO" in cu or "TÉRMINO" in cu:
+            dfp[c] = pd.Categorical(dfp[c], categories=order_ter, ordered=True)
+
+    fig.update_layout(
+        title="Flujo por categorías (Parcats)",
+        height=430,
+        margin=dict(l=40, r=30, t=50, b=20),
+        uirevision="const",
+    )
+    return fig

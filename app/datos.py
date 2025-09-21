@@ -192,5 +192,13 @@ def layout_datos():
                 ],
                 style={"marginTop": "24px"},
             ),
+            # FILA X — Categorías paralelas (Parcats)
+            html.Div(
+                [
+                    html.H4("Flujo por categorías (Parcats)"),
+                    dcc.Graph(id="graf-categorias-paralelas"),
+                ],
+                style={"marginTop": "14px"},
+            ),
         ]
     )
